@@ -94,16 +94,15 @@ async function run(){
 
     // Run the combination logic for each camera
     for (const camera of uniqueCameras.slice(0,1)) {
-        var data = {};
-        var ind = 0;
-        var prevEnd;
-        var camVid;
-
+        const data = {};
+        let prevEnd;
+        let camVid;
+``
         data[camera] = {};
 
         // REMOVE WHEN DONE:  Start with just two video files for testing
-        for (const file of fileOrder[camera].slice(0,2)) {
-            console.log(`${camera}...processing ${ind} of ${fileOrder[camera].length}: ${file}`)
+        for (const [idx, file]of fileOrder[camera].slice(0,2).entries()) {
+            console.log(`${camera}...processing ${idx} of ${fileOrder[camera].length}: ${file}`)
 
             // Get the gpmf-extract binary object for this file (adjusted with bufferAppender)
             // Add the gpmf-extract binary data to the data object for analysis
@@ -121,29 +120,30 @@ async function run(){
             data[camera][file]['duration'] = (fileData.timing.frameDuration * fileData.timing.videoDuration) * 60;
 
             // Get difference in time with the previous file and add a buffer video if necessary
-            if (ind == 0) {
+            if (idx == 0) {
                 camVid = ffmpeg(file);
                 prevEnd = data[camera][file]['start_time'] + data[camera][file]['duration'];
             } else {
-                var timeDiff = data[camera][file]['start_time'] - prevEnd;
+                const timeDiff = data[camera][file]['start_time'] - prevEnd;
                 console.log(timeDiff);
-                const child = spawn(`ffmpeg -f lavfi -i color=size=1920x1080:rate=29.97:color=black -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 -t 10 test_output.mp4`)
+                // const child = spawn(`ffmpeg -f lavfi -i color=size=1920x1080:rate=29.97:color=black -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 -t 10 test_output.mp4`)
+                ffmpeg('color=size=1920x1080:rate=29.97:color=black').inputFormat('lavfi').input('anullsrc=channel_layout=stereo:sample_rate=48000').inputFormat('lavfi').outputOptions([`-t ${Math.abs(timeDiff)}`]).save(`./${idx}_blank.mp4`).run()
             }
 
             // Iterate the file index
-            ind++;
+            // ind++;
         }
 
         // Wait for the data object to be populated and logged
         await console.log(data)
 
         // Extract the telemetry data from the first value in the data array
-        const telemetry = await goproTelemetry(data['Rear_Right/'][fileOrder['Rear_Right'][0]]['results'])
-        console.log(JSON.stringify(telemetry))
+        // const telemetry = await goproTelemetry(data['Rear_Right/'][fileOrder['Rear_Right'][0]]['results'])
+        // console.log(JSON.stringify(telemetry))
 
         // Save the data to an output file
-        await fs.promises.writeFile('output_sam.json', JSON.stringify(telemetry))
-        console.log('saved!')
+        // await fs.promises.writeFile('output_sam.json', JSON.stringify(telemetry))
+        // console.log('saved!')
     }
 }
 
