@@ -1,23 +1,35 @@
-// APROACH
-// 1. For each camera: find the different files
-//    a. Order the files
-//    b. Get the start time (unix time from the gpmf-extract object 'start') for each and the length 
-//       of the video
-//    e. Find the difference between end time (from the duration/start time) and the next
-//       start time for each subsequent video
-//    f. Loop through the videos and append them with blank time when there is a gap between
-//       end time and start time of the next video
-//       (NOTE: should loop through each GP video for each GOPR and append before appending
-//       data from the next GOPR vclip)
-//    g. Save this master video
-//    h. Save the telemetry data for this camera
-// 2. Find the earliest start time for each camera
-//    a. For any videos with start times later than the earliest start time, append 
-//       blank time at the beginning of the processed clip to align them
-//    b. Do the same with the end of the video
-// 3. Use ffmpeg to put the videos side-by-side for all videos for an individual 
-//    participant
-// 4. Save this video to the main p[num] folder
+// PROGRESS | GENERAL APPROACH
+// DONE       1. For each camera: find the different files
+// DONE          a. Order the files
+// DONE          b. Get the start time (unix time from the gpmf-extract object 'start') for each and the length 
+//                  of the video
+// DONE          e. Find the difference between end time (from the duration/start time) and the next
+//                  start time for each subsequent video
+// DEBUG         f. Loop through the videos and append them with blank time when there is a gap between
+//                  end time and start time of the next video
+//                  (NOTE: should loop through each GP video for each GOPR and append before appending
+//                  data from the next GOPR vclip)
+// DEBUG         g. Save this master video
+// DEBUG         h. Save the telemetry data for this camera
+// DEBUG      2. Find the earliest start time for each camera
+// DEBUG         a. For any videos with start times later than the earliest start time, append 
+//                  blank time at the beginning of the processed clip to align them
+// DEBUG         b. Do the same with the end of the video
+// DEBUG      3. Use ffmpeg to put the videos side-by-side for all videos for an individual 
+//               participant
+// DEBUG      4. Save this video to the main p[num] folder
+
+// PROGRESS | VARIOUS TO-DOs
+// OPEN       1. Remove slices to allow run over all cameras/videos
+// OPEN       2. Change the filePath to be a command line argment where the 
+//               user can input the path to the participant
+// OPEN       3. Change the output files to save to a command line argument path
+//               rather than this directory
+// OPEN       4. Reduce the output file sizes (give a variety of resolutions?)
+
+// PROGRESS | CURRENT BUGS
+// DEBUGGING  1. Concat is creating only audio
+// DEBUGGING  2. Weird async stuff is leading it to think the file isn't available
 
 // Import packages
 const gpmfExtract = require('gpmf-extract'); // https://github.com/JuanIrache/gpmf-extract
@@ -29,7 +41,6 @@ const spawn = require('child_process');
 
 // Set the path of videos to analyze
 const filePath = '/media/CAR_PROJECTS/Bremers_FamilyCarTrip/P5_04172021/Video_Audio/';
-// TO DO: add command line parameter for specifying participant number
 
 // Set up data holders
 const fileOrder = {}
@@ -92,15 +103,19 @@ async function run(){
         }
     }
 
+    var earliest_start = Infinity;
+    var latest_end = 0;
+    const data = {};
     // Run the combination logic for each camera
-    for (const camera of uniqueCameras.slice(0,1)) {
-        const data = {};
+    // REMOVE SLICE
+    for (const camera of uniqueCameras.slice(0,2)) {
+        var mergeFiles = [];
         let prevEnd;
-        let camVid;
-``
+
         data[camera] = {};
 
         // REMOVE WHEN DONE:  Start with just two video files for testing
+        // REMOVE SLICE
         for (const [idx, file]of fileOrder[camera].slice(0,2).entries()) {
             console.log(`${camera}...processing ${idx} of ${fileOrder[camera].length}: ${file}`)
 
@@ -117,22 +132,45 @@ async function run(){
             data[camera][file] = {};
             data[camera][file]['results'] = fileData;
             data[camera][file]['start_time'] = new Date(fileData.timing.start).getTime() / 1000;
-            data[camera][file]['duration'] = (fileData.timing.frameDuration * fileData.timing.videoDuration) * 60;
+            data[camera][file]['duration'] = fileData.timing.videoDuration;
 
             // Get difference in time with the previous file and add a buffer video if necessary
             if (idx == 0) {
-                camVid = ffmpeg(file);
+                var cameraStart = data[camera][file]['start_time'];
+                var runningDur = data[camera][file]['duration']
                 prevEnd = data[camera][file]['start_time'] + data[camera][file]['duration'];
+                mergeFiles.push(file);
             } else {
-                const timeDiff = data[camera][file]['start_time'] - prevEnd;
+                const timeDiff = Math.max(data[camera][file]['start_time'] - prevEnd, 0.0);
                 console.log(timeDiff);
-                // const child = spawn(`ffmpeg -f lavfi -i color=size=1920x1080:rate=29.97:color=black -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 -t 10 test_output.mp4`)
-                ffmpeg('color=size=1920x1080:rate=29.97:color=black').inputFormat('lavfi').input('anullsrc=channel_layout=stereo:sample_rate=48000').inputFormat('lavfi').outputOptions([`-t ${Math.abs(timeDiff)}`]).save(`./${idx}_blank.mp4`).run()
+                const blankFile = `./${idx}_blank.mp4`;
+                ffmpeg('color=size=1920x1080:rate=29.97:color=black').inputFormat('mp4').input('anullsrc=channel_layout=stereo:sample_rate=48000').inputFormat('mp4').outputOptions([`-t ${Math.abs(timeDiff)}`]).save(blankFile).run()
+                mergeFiles.push(blankFile);
+                mergeFiles.push(file);
+
+                runningDur = runningDur + timeDiff + data[camera][file]['duration']
             }
 
-            // Iterate the file index
-            // ind++;
+            // Merge the files together after writing the file array to a txt file
+            // Adapted from https://github.com/fluent-ffmpeg/node-fluent-ffmpeg/issues/496
+            var txtFile = './merge_array.txt';
+            var fileNames = '';
+            mergeFiles.forEach(function(fileName, index) {
+                fileNames = fileNames + 'file ' + "'" + fileName + "'\n";
+            });
+            fs.writeFileSync(txtFile, fileNames);
+            ffmpeg().input(txtFile).inputOptions(['-f concat', '-safe 0']).outputOptions('-c copy').save(`${camera}_concat.mp4`);
+
+            // Save the concat file info for analysis across cameras
+            data[camera]['concat_start'] = cameraStart;
+            data[camera]['concat_duration'] = runningDur;
+
+            //ffmpeg(txtFile).inputFormat('concat').writeToFile(`${camera}_concat.mp4`);
         }
+
+        // Find the earliest start time
+        earliest_start = Math.min(earliest_start, data[camera]['concat_start']);
+        latest_end = Math.max(latest_end, data[camera]['concat_start'] + data[camera]['concat_duration']);
 
         // Wait for the data object to be populated and logged
         await console.log(data)
@@ -145,6 +183,75 @@ async function run(){
         // await fs.promises.writeFile('output_sam.json', JSON.stringify(telemetry))
         // console.log('saved!')
     }
+
+    var finalVideos = [];
+    // Add blank video on either side of the video to pad and sync across cameras
+    // REMOVE SLICE
+    for (const camera of uniqueCameras.slice(0,1)) {
+        var mergeFiles = [];
+        data[camera]['start_diff'] = data[camera]['concat_start'] - earliest_start;
+        data[camera]['end_diff'] = latest_end - (data[camera]['concat_duration'] + data[camera]['concat_start']);
+
+        console.log(data[camera]['start_diff']);
+        console.log(data[camera]['end_diff']);
+
+        if (data[camera]['start_diff'] != 0.0) {
+            const startBlankFile = `./${camera}_start_blank.mp4`;
+            ffmpeg('color=size=1920x1080:rate=29.97:color=black').inputFormat('lavfi').input('anullsrc=channel_layout=stereo:sample_rate=48000').inputFormat('lavfi').outputOptions([`-t ${Math.abs(data[camera]['start_diff'] )}`]).save(startBlankFile).run();
+            mergeFiles.push(startBlankFile);
+        }
+
+        if (data[camera]['start_diff'] != 0.0 || data[camera]['end_diff'] != 0.0) {
+            mergeFiles.push(`./${camera}_concat.mp4`);
+        }
+
+        if (data[camera]['end_diff'] != 0.0) {
+            const endBlankFile = `./${camera}_end_blank.mp4`;
+            ffmpeg('color=size=1920x1080:rate=29.97:color=black').inputFormat('lavfi').input('anullsrc=channel_layout=stereo:sample_rate=48000').inputFormat('lavfi').outputOptions([`-t ${Math.abs(data[camera]['end_diff'] )}`]).save(endBlankFile).run();
+            mergeFiles.push(endBlankFile);
+        }
+
+        if (mergeFiles.length != 0) {
+            var txtFile = './merge_array.txt';
+            var fileNames = '';
+            mergeFiles.forEach(function(fileName, index) {
+                fileNames = fileNames + 'file ' + "'" + fileName + "'\n";
+            });
+            fs.writeFileSync(txtFile, fileNames);
+            const saveFile = `./final_${camera}_concat.mp4`;
+            finalVideos.push(saveFile);
+            await ffmpeg().input(txtFile).inputOptions(['-f concat', '-safe 0']).outputOptions('-c copy').save(saveFile); 
+        }
+    }
+
+    /*
+    // Put the videos from each camera side-by-side
+    // Adapted from https://stackoverflow.com/questions/38234357/node-js-ffmpeg-display-two-videos-next-to-each-other
+    var txtFile = './merge_array.txt'
+    var fileNames = '';
+    finalVideos.forEach(function(fileName, index) {
+        fileNames = fileNames + 'file ' + "'" + fileName + "'\n";
+    });
+    fs.writeFileSync(txtFile, fileNames);
+    await ffmpeg().input(txtFile)
+      .complexFilter([
+        '[0:v]scale=300:300[0scaled]',
+        '[1:v]scale=300:300[1scaled]',
+        '[0scaled]pad=600:300[0padded]',
+        '[0padded][1scaled]overlay=shortest=1:x=300[output]'
+      ])
+      .outputOptions([
+        '-map [output]'
+      ])
+      .output("./full_view.mp4")
+      .on("error",function(er){
+        console.log("error occured: "+er.message);
+      })
+      .on("end",function(){
+        console.log("success");
+      })
+      .run();
+      */
 }
 
 // Run the script
