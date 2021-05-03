@@ -67,21 +67,23 @@ async function run(){
     const pathLen = filePath.split('/').length;
     var fileData;
 
+    // Make it easier to break up the data by organizing by camera
     const cameras = files.map(val => val.split('/')[pathLen - 1].split('/')[0]);
     const uniqueCameras = cameras.filter(onlyUnique);
     console.log(`Cameras: ${uniqueCameras}`);
     for (const cam of uniqueCameras) {
         fileOrder[cam] = [];
-        var goprFiles = await glob(filePath + cam + '/GOPR*.MP4');
-        var gpFiles = await glob(filePath + cam + '/GP*.MP4');
 
+        // Pull the relevant "starter" files for that camera and sort them
+        var goprFiles = await glob(filePath + cam + '/GOPR*.MP4');
         goprFiles.sort();
 
         for (const gopr of goprFiles) {
             fileOrder[cam].push(gopr);
+
+            // Pull the secondary files for each recording, sort, and add to the ordering
             var fileID = gopr.split('GOPR')[1];
             var gpFiles = await glob(filePath + cam + '/GP*' + fileID);
-
             gpFiles.sort();
 
             for (const gp of gpFiles) {
@@ -90,11 +92,16 @@ async function run(){
         }
     }
 
+    // Run the combination logic for each camera
     for (const camera of uniqueCameras.slice(0,1)) {
         var data = {};
         var ind = 0;
         var prevEnd;
         var camVid;
+
+        data[camera] = {};
+
+        // REMOVE WHEN DONE:  Start with just two video files for testing
         for (const file of fileOrder[camera].slice(0,2)) {
             console.log(`${camera}...processing ${ind} of ${fileOrder[camera].length}: ${file}`)
 
@@ -107,24 +114,13 @@ async function run(){
                 break;
             }
 
-            try {
-                data[camera][file] = {};
-            } catch (error) {
-                console.log(`Adding ${camera} to the object...`)
-                data[camera] = {};
-                data[camera][file] = {};
-            }
-            
-            try {
-                data[camera][file]['results'] = fileData;
-                data[camera][file]['start_time'] = new Date(fileData.timing.start).getTime() / 1000;
-                data[camera][file]['duration'] = (fileData.timing.frameDuration * fileData.timing.videoDuration) * 60;
-            } catch (error) {
-                console.log(error)
-            }
+            // Add the start time, duration, and geo binary for this file
+            data[camera][file] = {};
+            data[camera][file]['results'] = fileData;
+            data[camera][file]['start_time'] = new Date(fileData.timing.start).getTime() / 1000;
+            data[camera][file]['duration'] = (fileData.timing.frameDuration * fileData.timing.videoDuration) * 60;
 
-            console.log(data[camera][file])
-
+            // Get difference in time with the previous file and add a buffer video if necessary
             if (ind == 0) {
                 camVid = ffmpeg(file);
                 prevEnd = data[camera][file]['start_time'] + data[camera][file]['duration'];
@@ -133,7 +129,8 @@ async function run(){
                 console.log(timeDiff);
                 const child = spawn(`ffmpeg -f lavfi -i color=size=1920x1080:rate=29.97:color=black -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 -t 10 test_output.mp4`)
             }
-            
+
+            // Iterate the file index
             ind++;
         }
 
