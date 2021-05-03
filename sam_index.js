@@ -30,6 +30,7 @@
 // PROGRESS | CURRENT BUGS
 // DEBUGGING  1. Concat is creating only audio
 // DEBUGGING  2. Weird async stuff is leading it to think the file isn't available
+// DEBUGGING  3. There's something strange going on with the end_diff for a camera (from latest_end)
 
 // Import packages
 const gpmfExtract = require('gpmf-extract'); // https://github.com/JuanIrache/gpmf-extract
@@ -174,6 +175,9 @@ async function run(){
 
         // Wait for the data object to be populated and logged
         await console.log(data)
+
+        console.log(earliest_start);
+        console.log(latest_end);
 
         // Extract the telemetry data from the first value in the data array
         // const telemetry = await goproTelemetry(data['Rear_Right/'][fileOrder['Rear_Right'][0]]['results'])
