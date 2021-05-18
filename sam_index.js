@@ -103,10 +103,11 @@ catch(err){
 }
 
 // correct gps timestamps after fix aquired
-async function extract_and_correct(directory, overwrite=false) {
+async function correctAndExtract(directory, overwrite=false) {
   // get videos in directory
   const files = await glob(`${directory}/*.MP4`);
   const outDir = path.join(path.dirname(directory), 'vid_meta');
+  const GPSs = {}
   // if the outfolder doesn't exist make it
   await fs.promises.access(outDir)
     .catch(async (e) => {
@@ -118,6 +119,24 @@ async function extract_and_correct(directory, overwrite=false) {
     });
 
   try {
+    for await ( const vidPath of files) {
+        const outfile = path.join(outDir, path.basename(vidPath, path.extname(vidPath))+'.json')
+          await fs.promises.access(outDir)
+        .catch(async (e) => {
+          if (e.code === 'ENOENT' || overwrite) {
+            // process vid here
+            const telemetry = await processVid(vidPath)
+            await fs.promises.writeFile(outfile, JSON.stringify(telemetry))
+            GPSs[vidPath] = telemetry['1'].streams.GPS5.samples
+          } else {
+            console.log(`${outfile} already exists. Regengerate by passing overwrite=true`);
+            GPSs[vidPath] = JSON.parse(await fs.promises.readFile(outfile, 'utf8'))
+            continue
+          }
+        });
+    }
+    // const outfile = path.join(outDir, path.basename(vidPath, path.extname(vidPath))+'.json')
+    // if()
   const fileData = await gpmfExtract(bufferAppender(vidPath, 10 * 1024 * 1024))
   // console.log(fileData)
   const telemetry = await goproTelemetry(fileData)
