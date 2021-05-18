@@ -72,42 +72,38 @@ function onlyUnique(value, index, self) {
   return self.indexOf(value) === index;
 }
 
-async function adjustTimestamps(data){
-    const startIndex = data.map(i=> i.value[0]).findIndex(lng => lng > 0)
-const startTime = DateTime.fromISO(data[startIndex].date).minus(data[startIndex].cts)
-const adjusted = data.map((sample) => {
-    if(sample.value[0] > 0) { return sample }
-        else{
-            sample.date = startTime.plus(sample.cts).toUTC().toString()
-            return sample
-        }
-} )
-return adjusted
+async function adjustTimestamps(data) {
+  const startIndex = data.map((i) => i.value[0]).findIndex((lng) => lng > 0);
+  const startTime = DateTime.fromISO(data[startIndex].date).minus(data[startIndex].cts);
+  const adjusted = data.map((sample) => {
+    if (sample.value[0] > 0) { return sample; }
+
+    sample.date = startTime.plus(sample.cts).toUTC().toString();
+    return sample;
+  });
+  return adjusted;
 }
 
-async function processVid(vidPath){
-
-    try {
-  const fileData = await gpmfExtract(bufferAppender(vidPath, 10 * 1024 * 1024))
-  const telemetry = await goproTelemetry(fileData)
-  console.log(telemetry)
-// this heuristic isn't perfect and might want to be refined
- telemetry['1'].streams.GPS5.samples = await adjustTimestamps(telemetry['1'].streams.GPS5.samples)
- console.log(telemetry['1'].streams.GPS5.samples[0])
- return telemetry
-}
-catch(err){
-  console.log(err, vidPath)
-}
-
+async function processVid(vidPath) {
+  try {
+    const fileData = await gpmfExtract(bufferAppender(vidPath, 10 * 1024 * 1024));
+    const telemetry = await goproTelemetry(fileData);
+    console.log(telemetry);
+    // this heuristic isn't perfect and might want to be refined
+    telemetry['1'].streams.GPS5.samples = await adjustTimestamps(telemetry['1'].streams.GPS5.samples);
+    console.log(telemetry['1'].streams.GPS5.samples[0]);
+    return telemetry;
+  } catch (err) {
+    console.log(err, vidPath);
+  }
 }
 
 // correct gps timestamps after fix aquired
-async function correctAndExtract(directory, overwrite=false) {
+async function correctAndExtract(directory, overwrite = false) {
   // get videos in directory
   const files = await glob(`${directory}/*.MP4`);
   const outDir = path.join(path.dirname(directory), 'vid_meta');
-  const GPSs = {}
+  const GPSs = {};
   // if the outfolder doesn't exist make it
   await fs.promises.access(outDir)
     .catch(async (e) => {
@@ -119,33 +115,32 @@ async function correctAndExtract(directory, overwrite=false) {
     });
 
   try {
-    for await ( const vidPath of files) {
-        const outfile = path.join(outDir, path.basename(vidPath, path.extname(vidPath))+'.json')
-          await fs.promises.access(outDir)
+    for await (const vidPath of files) {
+      const outfile = path.join(outDir, `${path.basename(vidPath, path.extname(vidPath))}.json`);
+      await fs.promises.access(outDir)
         .catch(async (e) => {
           if (e.code === 'ENOENT' || overwrite) {
             // process vid here
-            const telemetry = await processVid(vidPath)
-            await fs.promises.writeFile(outfile, JSON.stringify(telemetry))
-            GPSs[vidPath] = telemetry['1'].streams.GPS5.samples
+            const telemetry = await processVid(vidPath);
+            await fs.promises.writeFile(outfile, JSON.stringify(telemetry));
+            GPSs[vidPath] = telemetry['1'].streams.GPS5.samples;
           } else {
             console.log(`${outfile} already exists. Regengerate by passing overwrite=true`);
-            GPSs[vidPath] = JSON.parse(await fs.promises.readFile(outfile, 'utf8'))
-            continue
+            GPSs[vidPath] = JSON.parse(await fs.promises.readFile(outfile, 'utf8'));
+            // continue
           }
         });
     }
     // const outfile = path.join(outDir, path.basename(vidPath, path.extname(vidPath))+'.json')
     // if()
-  const fileData = await gpmfExtract(bufferAppender(vidPath, 10 * 1024 * 1024))
-  // console.log(fileData)
-  const telemetry = await goproTelemetry(fileData)
-  const outfile = path.join(outDir, path.basename(vidPath, path.extname(vidPath))+'.json')
-  await fs.promises.writeFile(outfile, JSON.stringify(telemetry))
-}
-catch(err){
-  console.log(err, vidPath)
-}
+    const fileData = await gpmfExtract(bufferAppender(vidPath, 10 * 1024 * 1024));
+    // console.log(fileData)
+    const telemetry = await goproTelemetry(fileData);
+    const outfile = path.join(outDir, `${path.basename(vidPath, path.extname(vidPath))}.json`);
+    await fs.promises.writeFile(outfile, JSON.stringify(telemetry));
+  } catch (err) {
+    console.log(err, vidPath);
+  }
 }
 
 // Get all of the files in the filepath with `GOPR` in the name and process each
@@ -348,4 +343,4 @@ async function run() {
 
 // Run the script
 // run();
-const t = processVid('/home/farlab/nissan/data/p5/forward/GP020182.MP4')
+const t = processVid('/home/farlab/nissan/data/p5/forward/GP020182.MP4');
