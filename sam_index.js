@@ -41,6 +41,7 @@ const glob = require('glob-promise');
 const ffmpeg = require('fluent-ffmpeg'); // https://www.npmjs.com/package/fluent-ffmpeg
 const spawn = require('child_process');
 const { DateTime } = require('luxon');
+const path = require('path');
 
 // Set the path of videos to analyze
 const filePath = '/media/CAR_PROJECTS/Bremers_FamilyCarTrip/P5_04172021/Video_Audio/';
@@ -94,7 +95,7 @@ async function processVid(vidPath) {
     console.log(telemetry['1'].streams.GPS5.samples[0]);
     return telemetry;
   } catch (err) {
-    console.log(err, vidPath);
+    console.error(err, vidPath);
   }
 }
 
@@ -102,6 +103,7 @@ async function processVid(vidPath) {
 async function correctAndExtract(directory, overwrite = false) {
   // get videos in directory
   const files = await glob(`${directory}/*.MP4`);
+  console.log(files);
   const outDir = path.join(path.dirname(directory), 'vid_meta');
   const GPSs = {};
   // if the outfolder doesn't exist make it
@@ -117,27 +119,26 @@ async function correctAndExtract(directory, overwrite = false) {
   try {
     for await (const vidPath of files) {
       const outfile = path.join(outDir, `${path.basename(vidPath, path.extname(vidPath))}.json`);
-      await fs.promises.access(outDir)
+      await fs.promises.access(outDir) 
         .catch(async (e) => {
+          console.log('here too');
           if (e.code === 'ENOENT' || overwrite) {
             // process vid here
             const telemetry = await processVid(vidPath);
             await fs.promises.writeFile(outfile, JSON.stringify(telemetry));
-            GPSs[vidPath] = telemetry['1'].streams.GPS5.samples;
+            GPSs[vidPath] = telemetry['1'].streams.GPS5.samples[0]['date'];
+            console.log(GPSs[vidPath]);
           } else {
             console.log(`${outfile} already exists. Regengerate by passing overwrite=true`);
             GPSs[vidPath] = JSON.parse(await fs.promises.readFile(outfile, 'utf8'));
             // continue
           }
         });
-    }
-    // const outfile = path.join(outDir, path.basename(vidPath, path.extname(vidPath))+'.json')
-    // if()
     const fileData = await gpmfExtract(bufferAppender(vidPath, 10 * 1024 * 1024));
-    // console.log(fileData)
     const telemetry = await goproTelemetry(fileData);
-    const outfile = path.join(outDir, `${path.basename(vidPath, path.extname(vidPath))}.json`);
+    console.log(telemetry['1'].streams.GPS5.samples[0]['date'])
     await fs.promises.writeFile(outfile, JSON.stringify(telemetry));
+      }
   } catch (err) {
     console.log(err, vidPath);
   }
@@ -343,4 +344,5 @@ async function run() {
 
 // Run the script
 // run();
-const t = processVid('/home/farlab/nissan/data/p5/forward/GP020182.MP4');
+//const t = processVid('/home/farlab/nissan/data/p5/forward/GP020182.MP4');
+const t = correctAndExtract('/Users/sam/Documents/CornellTech/FARLab/Nissan/p3/gopro_data/driver/')

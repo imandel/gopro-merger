@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "fluent-ffmpeg": "^2.1.2",
+    "geojson-validation": "^1.0.2",
     "glob": "^7.1.6",
     "glob-promise": "^4.1.0",
     "gopro-telemetry": "^1.1.36",
